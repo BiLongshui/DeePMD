@@ -1,0 +1,54 @@
+on:
+  push:
+  pull_request:
+name: Test Python
+jobs:
+  testpython:
+    name: Test Python
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - python: 3.7
+            tf: 1.14
+          - python: 3.8
+            tf:
+          - python: "3.12"
+            tf:
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+        cache: 'pip'
+    - uses: mpi4py/setup-mpi@v1
+      if: ${{ matrix.tf == '' }}
+      with:
+        mpi: openmpi
+    # https://github.com/pypa/pip/issues/11770
+    - run: python -m pip install -U "pip>=21.3.1,!=23.0.0"
+    - run: pip install -e .[cpu,test]
+      env:
+        TENSORFLOW_VERSION: ${{ matrix.tf }}
+        DP_BUILD_TESTING: 1
+    - run: pip install horovod mpi4py
+      if: ${{ matrix.tf == '' }}
+      env:
+        HOROVOD_WITH_TENSORFLOW: 1
+        HOROVOD_WITHOUT_GLOO: 1
+    - run: dp --version
+    - run: pytest --cov=deepmd --cov=deepmd_utils source/tests --durations=0
+    - uses: codecov/codecov-action@v4
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  pass:
+    name: Pass testing Python
+    needs: [testpython]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: Decide whether the needed jobs succeeded or failed
+      uses: re-actors/alls-green@release/v1
+      with:
+        jobs: ${{ toJSON(needs) }}
